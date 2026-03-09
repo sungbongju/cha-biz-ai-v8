@@ -1805,6 +1805,7 @@ function onSpeakingDone(source) {
   }
   isSpeaking = false;
   isProcessing = false;
+  _ignoreDataReceived = false;  // 그리팅 무시 플래그 해제
   console.log('[Avatar] 발화 완료 감지 (' + source + ', ' + elapsed + 'ms) → autoListen=' + autoListenEnabled + ', session=' + !!sessionInfo);
   if (autoListenEnabled && sessionInfo) {
     setVoiceState('listening');
@@ -1861,6 +1862,9 @@ function detectSectionFromText(text) {
 }
 
 /* ── 대화 처리 파이프라인 (HeyGen TALK 모드) ── */
+var _lastUserInput = '';  // DataReceived에서 사용자 입력 필터링용
+var _ignoreDataReceived = false;  // 그리팅 등에서 DataReceived 무시용
+
 async function processUserInput(text) {
   if (!text || !sessionInfo) return;
 
@@ -1868,14 +1872,14 @@ async function processUserInput(text) {
   await interruptAvatar();
 
   isProcessing = true;
+  _ignoreDataReceived = false;
   stopListening();
 
   addChatBubble(text, 'user');
   setVoiceState('thinking');
 
-  // 사용자 질문에서 섹션 감지 → 자동 스크롤
-  var detectedSection = detectSectionFromText(text);
-  if (detectedSection) navigateToSection(detectedSection);
+  // 사용자 입력 저장 (DataReceived에서 필터링용)
+  _lastUserInput = text;
 
   // HeyGen TALK 모드: 사용자 질문 + 발음 규칙을 함께 전송
   var talkText = text + '\n\n[필수규칙: CHA→차, RISE→라이즈, AI→에이아이, IT→아이티, CPA→씨피에이, 차의과학대학교→차 의과학 대학교, 경영학전공→경영학 전공, 차병원→차 병원, %→퍼센트, 해요체 사용, 합니다체 금지]';
@@ -1959,6 +1963,9 @@ async function startSession() {
 
     room.on(lk.RoomEvent.DataReceived, function(payload, participant, kind) {
       try {
+        // 그리팅 등 무시 플래그
+        if (_ignoreDataReceived) return;
+
         var raw = new TextDecoder().decode(payload);
         var data = JSON.parse(raw);
         var chunk = data.text || data.message || data.content || '';
@@ -1966,8 +1973,20 @@ async function startSession() {
 
         _talkReplyBuffer += chunk;
 
+        // 사용자 입력이 에코되면 필터링 (TALK 모드가 질문+응답 모두 스트리밍)
+        var filtered = _talkReplyBuffer;
+        if (_lastUserInput && filtered.indexOf(_lastUserInput) === 0) {
+          filtered = filtered.substring(_lastUserInput.length);
+        }
+        // 발음 규칙 태그도 제거
+        filtered = filtered.replace(/^\s*\n*\[필수규칙:.*?\]\s*/gs, '');
+        filtered = filtered.replace(/\[필수규칙:.*?\]/gs, '');
+
         // cleanForDisplay로 자연스러운 텍스트 변환
-        var displayText = cleanForDisplay(_talkReplyBuffer);
+        var displayText = cleanForDisplay(filtered).trim();
+
+        // 아직 AI 응답 텍스트가 없으면 (사용자 입력 에코 구간) 버블 생성 안 함
+        if (!displayText) return;
 
         // 첫 글자 → 새 버블 생성
         if (!_talkReplyBubble) {
@@ -1987,11 +2006,17 @@ async function startSession() {
         if (_talkReplyTimer) clearTimeout(_talkReplyTimer);
         _talkReplyTimer = setTimeout(function() {
           console.log('[Avatar] TALK 응답 완료:', _talkReplyBuffer);
-          // 응답 텍스트로 섹션 자동 스크롤도 시도
-          var section = detectSectionFromText(_talkReplyBuffer);
+          // 필터링된 응답 텍스트로 섹션 자동 스크롤
+          var finalFiltered = _talkReplyBuffer;
+          if (_lastUserInput && finalFiltered.indexOf(_lastUserInput) === 0) {
+            finalFiltered = finalFiltered.substring(_lastUserInput.length);
+          }
+          finalFiltered = finalFiltered.replace(/\[필수규칙:.*?\]/gs, '');
+          var section = detectSectionFromText(finalFiltered);
           if (section) navigateToSection(section);
           _talkReplyBuffer = '';
           _talkReplyBubble = null;
+          _lastUserInput = '';  // 필터링 완료 후 초기화
         }, 500);
       } catch(e) {
         // JSON이 아닌 경우 무시
@@ -2053,7 +2078,8 @@ async function startSession() {
     autoListenEnabled = true;
     initWebSpeech();
 
-    // 인사 메시지
+    // 인사 메시지 (REPEAT 모드 — DataReceived 무시)
+    _ignoreDataReceived = true;
     var greetingDisplay = '안녕하세요! 차의과학대학교 경영학전공 상담을 도와드릴게요. 궁금하신 점을 편하게 말씀해 주세요.';
     var greetingTTS = '안녕하세요! 차 의과학 대학교, 경영학 전공 상담을 도와드릴게요. 궁금하신 점을 편하게 말씀해 주세요.';
     addChatBubble(greetingDisplay, 'ai');
