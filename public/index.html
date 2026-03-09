@@ -1828,6 +1828,22 @@ function onSpeakingDone(source) {
 async function interruptAvatar() {
   if (!sessionInfo) return;
   console.log('[Avatar] 발화 중단 요청');
+
+  // interrupt 전에 현재까지 쌓인 응답으로 섹션 스크롤 시도
+  if (_talkReplyBuffer) {
+    if (_talkReplyTimer) { clearTimeout(_talkReplyTimer); _talkReplyTimer = null; }
+    var finalFiltered = _talkReplyBuffer;
+    if (_lastUserInput && finalFiltered.indexOf(_lastUserInput) === 0) {
+      finalFiltered = finalFiltered.substring(_lastUserInput.length);
+    }
+    finalFiltered = finalFiltered.replace(/\[필수규칙:.*?\]/gs, '');
+    var section = detectSectionFromText(finalFiltered);
+    if (section) navigateToSection(section);
+    _talkReplyBuffer = '';
+    _talkReplyBubble = null;
+    _lastUserInput = '';
+  }
+
   try {
     await callProxy('/v1/streaming.interrupt', {
       session_id: sessionInfo.session_id
@@ -1873,6 +1889,9 @@ function detectSectionFromText(text) {
 /* ── 대화 처리 파이프라인 (HeyGen TALK 모드) ── */
 var _lastUserInput = '';  // DataReceived에서 사용자 입력 필터링용
 var _ignoreDataReceived = false;  // 그리팅 등에서 DataReceived 무시용
+var _talkReplyBuffer = '';
+var _talkReplyBubble = null;
+var _talkReplyTimer = null;
 
 async function processUserInput(text) {
   if (!text || !sessionInfo) return;
@@ -1966,9 +1985,6 @@ async function startSession() {
     });
 
     // TALK 모드: 응답 텍스트를 data track으로 수신 → 채팅 버블 (스트리밍)
-    var _talkReplyBuffer = '';
-    var _talkReplyBubble = null;
-    var _talkReplyTimer = null;
 
     room.on(lk.RoomEvent.DataReceived, function(payload, participant, kind) {
       try {
