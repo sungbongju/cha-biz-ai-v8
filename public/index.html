@@ -1712,10 +1712,13 @@ var _tabToSection = {
   tab9:'careers',tab10:'careers',tab11:'only-cha',tab12:'ai',
   tab13:'faq',tab14:'faq'
 };
+var _lastNavigatedSection = '';
 function navigateToSection(tabId) {
   var tid = _tabToSection[tabId] || tabId;
+  if (tid === _lastNavigatedSection) return;  // 같은 섹션 반복 스크롤 방지
+  _lastNavigatedSection = tid;
   var el = document.getElementById(tid);
-  if (el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 /* ── Web Speech API 음성인식 (TALK 모드용) ── */
@@ -1856,11 +1859,14 @@ function detectSectionFromText(text) {
   for (var sectionId in SECTION_KEYWORDS) {
     var keywords = SECTION_KEYWORDS[sectionId];
     var score = 0;
+    var matchCount = 0;
     for (var i = 0; i < keywords.length; i++) {
-      if (text.includes(keywords[i])) score += keywords[i].length;
+      if (text.includes(keywords[i])) { score += keywords[i].length; matchCount++; }
     }
     if (score > bestScore) { bestScore = score; bestMatch = sectionId; }
   }
+  // 키워드 2개 이상 매칭 또는 총 점수 8 이상일 때만 스크롤
+  if (bestScore < 8) return null;
   return bestMatch;
 }
 
