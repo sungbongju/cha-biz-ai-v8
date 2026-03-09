@@ -1673,6 +1673,30 @@ async function getSessionToken() {
   } catch (err) { return null; }
 }
 
+/* ── 채팅 버블용: TTS 발음 텍스트 → 자연스러운 표시용 텍스트 역변환 ── */
+function cleanForDisplay(text) {
+  return text
+    .replace(/에이아이/g, 'AI').replace(/이에스지/g, 'ESG')
+    .replace(/알앤디/g, 'R&D').replace(/아이티/g, 'IT')
+    .replace(/아이알/g, 'IR').replace(/피알/g, 'PR')
+    .replace(/씨피에이/g, 'CPA').replace(/케이피엠지/g, 'KPMG')
+    .replace(/키스트/g, 'KIST').replace(/케이티/g, 'KT')
+    .replace(/엔와이유/g, 'NYU').replace(/유엔디피/g, 'UNDP')
+    .replace(/에이디에스피/g, 'ADsP').replace(/에스큐엘디/g, 'SQLD')
+    .replace(/라이즈/g, 'RISE').replace(/엔지오/g, 'NGO')
+    .replace(/차 의과학 대학교/g, '차의과학대학교')
+    .replace(/차 의과학대/g, '차의과학대')
+    .replace(/차 병원 그룹/g, '차병원그룹').replace(/차 병원/g, '차병원')
+    .replace(/헬스케어 융합 학부/g, '헬스케어융합학부')
+    .replace(/미래 융합 대학/g, '미래융합대학')
+    .replace(/경영학 전공/g, '경영학전공')
+    .replace(/캡스톤 디자인/g, '캡스톤디자인')
+    .replace(/조직 행동론/g, '조직행동론').replace(/경영학 원론/g, '경영학원론')
+    .replace(/금융 감독원/g, '금융감독원').replace(/공인 회계사/g, '공인회계사')
+    .replace(/(\d+)\s*퍼센트/g, '$1%')
+    .replace(/\s{2,}/g, ' ').trim();
+}
+
 /* ── 섹션 스크롤 (navigate 처리) ── */
 var _tabToSection = {
   tab1:'research',tab2:'curriculum',tab3:'careers',tab4:'ai',
@@ -1849,7 +1873,7 @@ async function processUserInput(text) {
   if (detectedSection) navigateToSection(detectedSection);
 
   // HeyGen TALK 모드: 사용자 질문 + 발음 규칙을 함께 전송
-  var talkText = text + '\n\n[답변 시 발음규칙 필수: "차의과학대학교"→"차 의과학 대학교", "경영학전공"→"경영학 전공", "차병원"→"차 병원", AI→에이아이, IT→아이티, CPA→씨피에이, RISE→라이즈, %→퍼센트, 긴합성어 띄어쓰기, 해요체로 답변]';
+  var talkText = text + '\n\n[필수규칙: RISE는 반드시 "라이즈"로 읽기, AI→에이아이, IT→아이티, CPA→씨피에이, 차의과학대학교→차 의과학 대학교, 경영학전공→경영학 전공, 차병원→차 병원, %→퍼센트, 해요체 사용, 합니다체 금지]';
 
   isSpeaking = true;
   _speakStartedAt = Date.now();
@@ -1937,17 +1961,20 @@ async function startSession() {
 
         _talkReplyBuffer += chunk;
 
+        // cleanForDisplay로 자연스러운 텍스트 변환
+        var displayText = cleanForDisplay(_talkReplyBuffer);
+
         // 첫 글자 → 새 버블 생성
         if (!_talkReplyBubble) {
           var bubble = document.createElement('div');
           bubble.className = 'chat-bubble ai';
-          bubble.textContent = _talkReplyBuffer;
+          bubble.textContent = displayText;
           chatHistoryEl.appendChild(bubble);
           chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
           _talkReplyBubble = bubble;
         } else {
           // 이후 → 기존 버블 업데이트
-          _talkReplyBubble.textContent = _talkReplyBuffer;
+          _talkReplyBubble.textContent = displayText;
           chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
         }
 
@@ -1955,6 +1982,9 @@ async function startSession() {
         if (_talkReplyTimer) clearTimeout(_talkReplyTimer);
         _talkReplyTimer = setTimeout(function() {
           console.log('[Avatar] TALK 응답 완료:', _talkReplyBuffer);
+          // 응답 텍스트로 섹션 자동 스크롤도 시도
+          var section = detectSectionFromText(_talkReplyBuffer);
+          if (section) navigateToSection(section);
           _talkReplyBuffer = '';
           _talkReplyBubble = null;
         }, 500);
