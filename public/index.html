@@ -1884,6 +1884,13 @@ async function sendMessage() {
 
 /* ── 세션 시작 / 종료 ── */
 async function startSession() {
+  // 로그인 모달이 열려있으면 세션 시작 차단
+  var loginModal = document.getElementById('login-modal');
+  if (loginModal && loginModal.classList.contains('active')) {
+    alert('로그인 후 이용해 주세요.');
+    return;
+  }
+
   startBtnEl.disabled = true;
   startBtnEl.textContent = '연결 중...';
 
