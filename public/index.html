@@ -1676,6 +1676,9 @@ async function getSessionToken() {
 /* ── 채팅 버블용: TTS 발음 텍스트 → 자연스러운 표시용 텍스트 역변환 ── */
 function cleanForDisplay(text) {
   return text
+    // 발음 규칙 지시문 제거
+    .replace(/\[필수규칙:.*?\]/gs, '')
+    .replace(/\[답변 시 발음규칙.*?\]/gs, '')
     .replace(/에이아이/g, 'AI').replace(/이에스지/g, 'ESG')
     .replace(/알앤디/g, 'R&D').replace(/아이티/g, 'IT')
     .replace(/아이알/g, 'IR').replace(/피알/g, 'PR')
