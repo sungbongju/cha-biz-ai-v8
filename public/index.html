@@ -1625,15 +1625,12 @@ function setVoiceState(state) {
   switch (state) {
     case 'listening':
       voiceStatusEl.classList.add('active');
-      voiceLabelEl.textContent = '듣고 있어요... 말씀하세요';
+      voiceLabelEl.textContent = '듣고 있어요. 말씀하세요';
       break;
     case 'speaking':
-      voiceStatusEl.classList.add('active','speaking');
-      voiceLabelEl.textContent = '답변하고 있어요...';
-      break;
     case 'thinking':
-      voiceStatusEl.classList.add('active','thinking-state');
-      voiceLabelEl.textContent = '답변을 준비하고 있어요...';
+      voiceStatusEl.classList.add('active','speaking');
+      voiceLabelEl.textContent = '아바타가 말하는 중..';
       break;
     case 'idle':
       voiceStatusEl.style.display = 'none';
