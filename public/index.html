@@ -2002,7 +2002,7 @@ async function startSession() {
           chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
         }
 
-        // 500ms간 새 글자 안 오면 버블 완료 처리
+        // 1500ms간 새 글자 안 오면 버블 완료 처리
         if (_talkReplyTimer) clearTimeout(_talkReplyTimer);
         _talkReplyTimer = setTimeout(function() {
           console.log('[Avatar] TALK 응답 완료:', _talkReplyBuffer);
@@ -2017,7 +2017,7 @@ async function startSession() {
           _talkReplyBuffer = '';
           _talkReplyBubble = null;
           _lastUserInput = '';  // 필터링 완료 후 초기화
-        }, 500);
+        }, 1500);
       } catch(e) {
         // JSON이 아닌 경우 무시
       }
