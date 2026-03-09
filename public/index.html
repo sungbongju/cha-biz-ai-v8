@@ -1851,17 +1851,41 @@ async function startSession() {
       }
     });
 
-    // TALK 모드: 응답 텍스트를 data track으로 수신 → 채팅 버블 표시
+    // TALK 모드: 응답 텍스트를 data track으로 수신 → 채팅 버블 (스트리밍)
+    var _talkReplyBuffer = '';
+    var _talkReplyBubble = null;
+    var _talkReplyTimer = null;
+
     room.on(lk.RoomEvent.DataReceived, function(payload, participant, kind) {
       try {
-        var text = new TextDecoder().decode(payload);
-        var data = JSON.parse(text);
-        console.log('[Avatar] DataReceived:', data);
-        // HeyGen이 보내는 응답 텍스트 캡처
-        if (data.text || data.message || data.content) {
-          var replyText = data.text || data.message || data.content;
-          addChatBubble(replyText, 'ai');
+        var raw = new TextDecoder().decode(payload);
+        var data = JSON.parse(raw);
+        var chunk = data.text || data.message || data.content || '';
+        if (!chunk) return;
+
+        _talkReplyBuffer += chunk;
+
+        // 첫 글자 → 새 버블 생성
+        if (!_talkReplyBubble) {
+          var bubble = document.createElement('div');
+          bubble.className = 'chat-bubble ai';
+          bubble.textContent = _talkReplyBuffer;
+          chatHistoryEl.appendChild(bubble);
+          chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+          _talkReplyBubble = bubble;
+        } else {
+          // 이후 → 기존 버블 업데이트
+          _talkReplyBubble.textContent = _talkReplyBuffer;
+          chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
         }
+
+        // 500ms간 새 글자 안 오면 버블 완료 처리
+        if (_talkReplyTimer) clearTimeout(_talkReplyTimer);
+        _talkReplyTimer = setTimeout(function() {
+          console.log('[Avatar] TALK 응답 완료:', _talkReplyBuffer);
+          _talkReplyBuffer = '';
+          _talkReplyBubble = null;
+        }, 500);
       } catch(e) {
         // JSON이 아닌 경우 무시
       }
