@@ -1783,14 +1783,16 @@ async function processUserInput(text) {
   var detectedSection = detectSectionFromText(text);
   if (detectedSection) navigateToSection(detectedSection);
 
-  // HeyGen TALK 모드: 사용자 질문을 보내면 HeyGen이 GPT로 답변 생성 + 아바타 발화
+  // HeyGen TALK 모드: 사용자 질문 + 발음 규칙을 함께 전송
+  var talkText = text + '\n\n[답변 시 발음규칙 필수: "차의과학대학교"→"차 의과학 대학교", "경영학전공"→"경영학 전공", "차병원"→"차 병원", AI→에이아이, IT→아이티, CPA→씨피에이, RISE→라이즈, %→퍼센트, 긴합성어 띄어쓰기, 해요체로 답변]';
+
   isSpeaking = true;
   _speakStartedAt = Date.now();
   setVoiceState('speaking');
 
   await callProxy('/v1/streaming.task', {
     session_id: sessionInfo.session_id,
-    text: text,
+    text: talkText,
     task_type: 'talk'
   });
 
@@ -1846,6 +1848,22 @@ async function startSession() {
       if (track.kind === 'video' || track.kind === 'audio') {
         track.attach(mediaEl);
         placeholder.style.display = 'none';
+      }
+    });
+
+    // TALK 모드: 응답 텍스트를 data track으로 수신 → 채팅 버블 표시
+    room.on(lk.RoomEvent.DataReceived, function(payload, participant, kind) {
+      try {
+        var text = new TextDecoder().decode(payload);
+        var data = JSON.parse(text);
+        console.log('[Avatar] DataReceived:', data);
+        // HeyGen이 보내는 응답 텍스트 캡처
+        if (data.text || data.message || data.content) {
+          var replyText = data.text || data.message || data.content;
+          addChatBubble(replyText, 'ai');
+        }
+      } catch(e) {
+        // JSON이 아닌 경우 무시
       }
     });
 
