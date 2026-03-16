@@ -1467,9 +1467,9 @@ let chatHistory = [];
 let isProcessing = false;
 let isSpeaking = false;
 let autoListenEnabled = true;
-let _speakStartedAt = 0;
 
 let _speakTimer = null;
+let silenceTimer = null;
 
 // Web Speech API 음성인식 (REPEAT 모드 — 에코 방지 포함)
 let recognition = null;
@@ -1650,11 +1650,12 @@ function initWebSpeech() {
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
 
-  var silenceTimer = null;
-
   recognition.onstart = function() {
     isListening = true;
-    setVoiceState('listening');
+    // speaking 중이면 UI 상태 유지 (interrupt용 마이크만 열림)
+    if (!isSpeaking) {
+      setVoiceState('listening');
+    }
   };
 
   recognition.onresult = function(event) {
@@ -1696,11 +1697,9 @@ function initWebSpeech() {
 
   recognition.onend = function() {
     isListening = false;
-    // 에코 방지: speaking 중에는 절대 재시작 안 함
-    if (autoListenEnabled && sessionInfo && !isSpeaking && !isProcessing) {
-      setTimeout(function() {
-        if (!isSpeaking && !isProcessing) startListening();
-      }, 600);
+    // FTF 패턴: isSpeaking 체크 없음 — speaking 중에도 재시작하여 interrupt 가능
+    if (autoListenEnabled && sessionInfo && !isProcessing) {
+      setTimeout(startListening, 600);
     }
   };
 
@@ -1711,7 +1710,7 @@ function initWebSpeech() {
       alert('마이크 권한이 필요합니다.\n브라우저 주소창 왼쪽의 자물쇠 아이콘을 클릭하여 마이크를 허용해 주세요.');
       autoListenEnabled = false;
     } else if (e.error === 'no-speech') {
-      if (autoListenEnabled && sessionInfo && !isSpeaking && !isProcessing) {
+      if (autoListenEnabled && sessionInfo && !isProcessing) {
         setTimeout(startListening, 500);
       }
     }
@@ -1721,28 +1720,18 @@ function initWebSpeech() {
 }
 
 function startListening() {
-  if (!sessionInfo || isListening || isProcessing) return;
-  // isSpeaking 체크 없음 — 발화 중에도 마이크 열어서 interrupt 가능
-  if (!recognition) return;
+  if (!recognition || isListening || isProcessing || !sessionInfo) return;
   try {
     recognition.start();
-    isListening = true;
-    // speaking 중이면 UI 상태 유지 (listening으로 바꾸지 않음)
-    if (!isSpeaking) {
-      setVoiceState('listening');
-      taskInput.placeholder = '음성 인식 중... 말씀하세요';
-    }
-    console.log('[STT] 리스닝 시작 (speaking=' + isSpeaking + ')');
-  } catch (e) {
-    console.log('[STT] 리스닝 시작 실패:', e);
-  }
+  } catch (e) {}
 }
 
 function stopListening() {
-  if (recognition && isListening) {
+  clearTimeout(silenceTimer);  // FTF 패턴: silence 타이머도 정리
+  isListening = false;
+  if (recognition) {
     try { recognition.stop(); } catch(e) {}
   }
-  isListening = false;
   taskInput.placeholder = '질문을 입력하세요';
 }
 
@@ -1750,26 +1739,6 @@ function cleanupWhisper() {
   stopListening();
   recognition = null;
   console.log('[STT] 정리 완료');
-}
-
-// 발화 완료 공통 처리
-function onSpeakingDone(source) {
-  if (!isSpeaking) return;
-  var elapsed = Date.now() - _speakStartedAt;
-  if (source !== 'fallback' && source !== 'greeting-fallback' && elapsed < 1000) return;
-  isSpeaking = false;
-  isProcessing = false;
-  clearTimeout(_speakTimer);
-  console.log('[Avatar] 발화 완료 (' + source + ', ' + elapsed + 'ms)');
-  if (autoListenEnabled && sessionInfo) {
-    setVoiceState('listening');
-    setTimeout(function() {
-      if (!isSpeaking && !isProcessing) startListening();
-    }, 800);
-  } else {
-    setVoiceState('idle');
-    taskInput.placeholder = '텍스트로 질문하세요';
-  }
 }
 
 // 아바타 발화 중단 (말 끊기)
@@ -1823,7 +1792,6 @@ async function processUserInput(text) {
   if (!text || !sessionInfo || isProcessing) return;
 
   isProcessing = true;
-  stopListening();  // ★ 에코 방지: GPT 처리 중 마이크 중지
 
   addChatBubble(text, 'user');
   setVoiceState('thinking');
@@ -1849,10 +1817,8 @@ async function processUserInput(text) {
     var displayText = cleanForDisplay(data.reply || '');
     addChatBubble(displayText, 'ai');
 
-    // ★ 에코 방지: 아바타 발화 전에 마이크 완전히 중지
-    stopListening();
+    // 아바타 발화 시작
     isSpeaking = true;
-    _speakStartedAt = Date.now();
     setVoiceState('speaking');
 
     // REPEAT 모드: 아바타가 ttsReply를 그대로 읽음
@@ -1947,19 +1913,7 @@ async function startSession() {
       }
     });
 
-    // 아바타 발화 완료 감지 (ActiveSpeakers 기반 — 타이머보다 정확)
-    var _speakingTimeout = null;
-    room.on(lk.RoomEvent.ActiveSpeakersChanged, function(speakers) {
-      var avatarSpeaking = speakers.length > 0;
-      if (avatarSpeaking && isSpeaking) {
-        if (_speakingTimeout) clearTimeout(_speakingTimeout);
-        _speakingTimeout = setTimeout(function() {
-          if (isSpeaking) {
-            onSpeakingDone('ActiveSpeakers-silence');
-          }
-        }, 1000);
-      }
-    });
+    // FTF 패턴: ActiveSpeakers 이벤트 없음 — 타이머만으로 발화 완료 감지
 
     // 세션 끊김 감지 → 자동 정리 + 시작 버튼 활성화
     room.on(lk.RoomEvent.Disconnected, function(reason) {
@@ -2006,7 +1960,6 @@ async function startSession() {
     var greetingTTS = '안녕하세요! 차 의과학 대학교, 경영학 전공 상담을 도와드릴게요. 궁금하신 점을 편하게 말씀해 주세요.';
     addChatBubble(greetingDisplay, 'ai');
     isSpeaking = true;
-    _speakStartedAt = Date.now();
     setVoiceState('speaking');
 
     await callProxy('/v1/streaming.task', {
