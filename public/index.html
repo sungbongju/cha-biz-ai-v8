@@ -1671,16 +1671,12 @@ function initWebSpeech() {
       }
     }
 
-    // interrupt: 아바타가 말하는 중에 사용자가 말하면 끊기
-    if (isSpeaking && (finalText.trim() || (interim.trim() && interim.trim().length > 2))) {
-      interruptAvatar();
-    }
-
     if (interim) taskInput.value = interim;
 
     if (finalText && finalText.trim()) {
       taskInput.value = '';
       stopListening();
+      // processUserInput 내부에서 speaking 중이면 자동 interrupt
       processUserInput(finalText.trim());
     } else if (interim) {
       // 2초간 추가 음성 없으면 interim 텍스트로 처리
@@ -1791,7 +1787,12 @@ function detectSectionFromText(text) {
 
 /* ── 대화 처리 파이프라인 (REPEAT 모드 — 우리 GPT + 에코 방지) ── */
 async function processUserInput(text) {
-  if (!text || !sessionInfo || isProcessing) return;
+  if (!text || !sessionInfo) return;
+
+  // 이전 발화 중이면 먼저 끊기
+  if (isSpeaking || isProcessing) {
+    await interruptAvatar();
+  }
 
   isProcessing = true;
 
