@@ -1832,22 +1832,22 @@ async function processUserInput(text) {
       task_type: 'repeat'
     });
 
-    // 발화 시간 계산 (한국어 ~5글자/초 + 1.5초 버퍼)
-    var speakDuration = Math.max(3000, (ttsText.length / 5) * 1000 + 1500);
-
-    // 발화 완료 후 마이크 재시작
+    // 폴백 타이머 (DataReceived avatar_stop_talking이 먼저 오면 취소됨)
+    var speakDuration = Math.max(4000, (ttsText.length / 5) * 1000 + 2000);
     _speakTimer = setTimeout(function() {
+      if (!isSpeaking) return;  // 이미 이벤트로 처리됨
+      console.log('[Avatar] 폴백 타이머');
       isSpeaking = false;
       isProcessing = false;
       if (autoListenEnabled && sessionInfo) {
         setVoiceState('listening');
-        if (!isListening) startListening();
+        startListening();
       } else {
         setVoiceState('idle');
       }
     }, speakDuration);
 
-    // interrupt 대비: 발화 시작 500ms 후 마이크 열기 (큰 소리만 interrupt)
+    // interrupt 대비: 발화 시작 500ms 후 마이크 열기
     setTimeout(function() {
       if (autoListenEnabled && sessionInfo && isSpeaking) {
         startListening();
@@ -1916,7 +1916,29 @@ async function startSession() {
       }
     });
 
-    // FTF 패턴: ActiveSpeakers 이벤트 없음 — 타이머만으로 발화 완료 감지
+    // ★ DataReceived: 아바타 상태 이벤트 감지 (SDK 내부 로직과 동일)
+    room.on(lk.RoomEvent.DataReceived, function(payload) {
+      try {
+        var msg = JSON.parse(new TextDecoder().decode(payload));
+        if (msg.type === 'avatar_start_talking') {
+          console.log('[Avatar] 발화 시작 (이벤트)');
+          isSpeaking = true;
+          setVoiceState('speaking');
+        } else if (msg.type === 'avatar_stop_talking') {
+          console.log('[Avatar] 발화 완료 (이벤트, ' + (msg.duration_ms || '?') + 'ms)');
+          // 타이머 취소 — 이벤트가 더 정확
+          clearTimeout(_speakTimer);
+          isSpeaking = false;
+          isProcessing = false;
+          if (autoListenEnabled && sessionInfo) {
+            setVoiceState('listening');
+            startListening();
+          } else {
+            setVoiceState('idle');
+          }
+        }
+      } catch(e) {}
+    });
 
     // 세션 끊김 감지 → 자동 정리 + 시작 버튼 활성화
     room.on(lk.RoomEvent.Disconnected, function(reason) {
@@ -1971,9 +1993,11 @@ async function startSession() {
       task_type: 'repeat'
     });
 
-    // 인사말 발화 완료 → 마이크 시작
-    var greetDuration = Math.max(3000, (greetingTTS.length / 5) * 1000 + 1500);
+    // 인사말 폴백 타이머 (DataReceived avatar_stop_talking이 먼저 오면 취소됨)
+    var greetDuration = Math.max(4000, (greetingTTS.length / 5) * 1000 + 2000);
     _speakTimer = setTimeout(function() {
+      if (!isSpeaking) return;  // 이미 이벤트로 처리됨
+      console.log('[Avatar] 인사말 폴백 타이머');
       isSpeaking = false;
       isProcessing = false;
       if (autoListenEnabled && sessionInfo) {
