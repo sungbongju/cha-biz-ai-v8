@@ -1697,8 +1697,8 @@ function initWebSpeech() {
 
   recognition.onend = function() {
     isListening = false;
-    // FTF 패턴: isSpeaking 체크 없음 — speaking 중에도 재시작하여 interrupt 가능
-    if (autoListenEnabled && sessionInfo && !isProcessing) {
+    // 항상 재시작 — interrupt를 위해 speaking/processing 중에도 마이크 유지
+    if (autoListenEnabled && sessionInfo) {
       setTimeout(startListening, 600);
     }
   };
@@ -1710,7 +1710,7 @@ function initWebSpeech() {
       alert('마이크 권한이 필요합니다.\n브라우저 주소창 왼쪽의 자물쇠 아이콘을 클릭하여 마이크를 허용해 주세요.');
       autoListenEnabled = false;
     } else if (e.error === 'no-speech') {
-      if (autoListenEnabled && sessionInfo && !isProcessing) {
+      if (autoListenEnabled && sessionInfo) {
         setTimeout(startListening, 500);
       }
     }
@@ -1720,7 +1720,9 @@ function initWebSpeech() {
 }
 
 function startListening() {
-  if (!recognition || isListening || isProcessing || !sessionInfo) return;
+  // isProcessing 체크 없음 — speaking 중에도 마이크 열어서 interrupt 가능
+  // processUserInput() 자체에 isProcessing 가드가 있어서 중복 호출 방지됨
+  if (!recognition || isListening || !sessionInfo) return;
   try {
     recognition.start();
   } catch (e) {}
