@@ -1721,14 +1721,18 @@ function initWebSpeech() {
 }
 
 function startListening() {
-  if (!sessionInfo || isListening || isSpeaking || isProcessing) return;
+  if (!sessionInfo || isListening || isProcessing) return;
+  // isSpeaking 체크 없음 — 발화 중에도 마이크 열어서 interrupt 가능
   if (!recognition) return;
   try {
     recognition.start();
     isListening = true;
-    setVoiceState('listening');
-    taskInput.placeholder = '음성 인식 중... 말씀하세요';
-    console.log('[STT] 리스닝 시작');
+    // speaking 중이면 UI 상태 유지 (listening으로 바꾸지 않음)
+    if (!isSpeaking) {
+      setVoiceState('listening');
+      taskInput.placeholder = '음성 인식 중... 말씀하세요';
+    }
+    console.log('[STT] 리스닝 시작 (speaking=' + isSpeaking + ')');
   } catch (e) {
     console.log('[STT] 리스닝 시작 실패:', e);
   }
