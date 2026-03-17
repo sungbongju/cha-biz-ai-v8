@@ -1468,6 +1468,16 @@ let isProcessing = false;
 let isSpeaking = false;
 let autoListenEnabled = true;
 
+// ★ interrupt 키워드 감지 (에코 방지: speaking 중 이 키워드가 있어야만 interrupt)
+var INTERRUPT_KEYWORDS = ['잠깐','잠깐만','잠시만','아니','아니아니','아닌데','멈춰','그만','스톱','stop','다시','다른','바꿔','질문','저기','여기요'];
+function hasInterruptKeyword(text) {
+  var t = text.replace(/\s/g, '').toLowerCase();
+  for (var i = 0; i < INTERRUPT_KEYWORDS.length; i++) {
+    if (t.indexOf(INTERRUPT_KEYWORDS[i]) >= 0) return true;
+  }
+  return false;
+}
+
 let _speakTimer = null;
 let silenceTimer = null;
 
@@ -1789,8 +1799,15 @@ function detectSectionFromText(text) {
 async function processUserInput(text) {
   if (!text || !sessionInfo) return;
 
-  // 이전 발화 중이면 먼저 끊기
-  if (isSpeaking || isProcessing) {
+  // speaking 중이면 키워드 체크 → 에코 방지
+  if (isSpeaking) {
+    if (!hasInterruptKeyword(text)) {
+      console.log('[Avatar] 에코 무시 (키워드 없음):', text);
+      return;
+    }
+    console.log('[Avatar] 키워드 interrupt:', text);
+    await interruptAvatar();
+  } else if (isProcessing) {
     await interruptAvatar();
   }
 
